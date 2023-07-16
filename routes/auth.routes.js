@@ -4,15 +4,21 @@ const axios = require("axios");
 const fs = require("fs");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const { Configuration, OpenAIApi, TranscriptionsApi } = require("openai");
+const FormData = require("form-data");
+const path = require("path");
+const multer = require("multer");
 const User = require("../models/User.model");
 const Text = require("../models/Text.model");
 const Record = require("../models/Record.model");
 const { isAuthenticated } = require("../middlewares/jwt.auth");
 const uploader = require("../middlewares/cloudinary.config.js");
-const { Configuration, OpenAIApi, TranscriptionsApi } = require("openai");
-const FormData = require("form-data");
-const path = require("path");
-const multer = require('multer');
+
+// Error handler middleware
+const errorHandler = (err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({ error: 'An error occurred' });
+};
 
 router.post("/signup", async (req, res) => {
   try {
@@ -20,10 +26,9 @@ router.post("/signup", async (req, res) => {
     const salt = bcrypt.genSaltSync(saltRounds);
     const hash = bcrypt.hashSync(req.body.password, salt);
     const newUser = await User.create({ email: req.body.email, password: hash });
-    console.log("here is our new user in the DB", newUser);
     res.status(201).json(newUser);
   } catch (err) {
-    console.log(err);
+    next(err);
   }
 });
 
@@ -44,33 +49,24 @@ router.post("/login", async (req, res) => {
           algorithm: "HS256",
           expiresIn: "6h",
         });
-        console.log("here is my new token", authToken);
         res.status(200).json({ authToken });
       }
     } else {
-      //if there is no email in the DB matching
       res.status(400).json({ message: "email or password do not match" });
     }
   } catch (err) {
-    console.log(err);
+    next(err);
   }
 });
 
 router.get("/verify", isAuthenticated, (req, res) => {
-  const { _id } = req.payload;
-  try {
-    if (req.payload) {
-    res.status(200).json({ user: req.payload });
-    }
-  } catch (err) {
-    res.status(500).json({ error: "An error occurred" });
-  }
+  res.status(200).json({ user: req.payload });
 });
 
 router.get("/transcribe", isAuthenticated, uploader.single("recordPath"), async (req, res, next) => {
     try {
       // Method 1: transcribing a local file, saved in the project directory and then sending it to transcription
-      const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
       // This is defining the path of the local file:
       const filePath = path.join(__dirname, "../audio.mp3");
       const model = "whisper-1";
@@ -78,8 +74,7 @@ router.get("/transcribe", isAuthenticated, uploader.single("recordPath"), async 
       formData.append("model", model);
       formData.append("file", fs.createReadStream(filePath));
 
-      axios
-        .post("https://api.openai.com/v1/audio/transcriptions", formData, {
+      const response = axios.post("https://api.openai.com/v1/audio/transcriptions", formData, {
           headers: {
             ...formData.getHeaders(),
             authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
@@ -87,13 +82,11 @@ router.get("/transcribe", isAuthenticated, uploader.single("recordPath"), async 
           },
         })
         .then((response) => {
-          console.log(response.data.text);
           const text = response.data.text;
           res.json({ text });
         });
     } catch (err) {
-      console.error("error with openai axios call", err);
-      res.status(500).json({ error: "An error occurred" });
+      next(err);
     }
   }
 );
@@ -117,11 +110,10 @@ router.post("/addRecord", isAuthenticated, uploader.single("recordPath"), async 
       const localFilePath = "./temporary.mp3";
       saveAudioToLocal(audioUrl, localFilePath)
         .then(() => {
-          console.log("Audio file saved successfully!");
           sendToApi();
         })
         .catch((error) => {
-          console.error("Error saving audio file:", error);
+          next(err);
         });
 
       // define function saveAudioToLocal which creates a stream out of a URL and saves it to a local file
@@ -155,14 +147,12 @@ router.post("/addRecord", isAuthenticated, uploader.single("recordPath"), async 
           })
           .then((response) => {
             const text = response.data.text;
-            console.log(text);
             res.json({ text });
             return Record.findByIdAndUpdate(searchedRecord, { transcript: text },{ new: true })
           });
       }
     } catch(err){
-      console.error(err);
-      res.status(500).json({ error: "An error occurred" });
+      next(err);
     }    
   }
 );
@@ -177,7 +167,6 @@ router.get("/write", isAuthenticated, async (req, res, next) => {
   // get the last record transcript 
   const user = await User.findById(req.payload._id);
   const lastRecordId = user.record[user.record.length - 1]._id;
-  console.log(lastRecordId)
   const prompt = await Record.findById(lastRecordId);
 
   try {
@@ -196,8 +185,6 @@ router.get("/write", isAuthenticated, async (req, res, next) => {
     });
   
     const text = completion.data.choices[0].message.content;
-    console.log(lastRecordId);
-    console.log(text);
     res.json( {text} );
         
     //start
@@ -207,11 +194,9 @@ router.get("/write", isAuthenticated, async (req, res, next) => {
     const writtenTextId = writtenText._id;
     // Associate the record with the user
      await User.findByIdAndUpdate(req.payload._id, { $push: { writtenText: writtenTextId } }, { new: true });
-    // await writtenText.save();
     // end
   } catch(err) {
-    console.error("Error with OpenAI Chat Completion", err);
-    res.status(500).json({ error: "An error occurred" });
+    next(err);
   }
   
  }
@@ -234,7 +219,7 @@ router.post("/record", isAuthenticated, upload.single('audio'), async (req, res,
   try {
     res.status(200).json({ message: 'File uploaded successfully' });
   } catch (err) {
-    console.log(err);
+    next(err);
   }
 }
 );
@@ -242,10 +227,9 @@ router.post("/record", isAuthenticated, upload.single('audio'), async (req, res,
 // this route displays all recordings of a user
 router.get("/display", isAuthenticated, async (req, res, next) => {
   try {
-    console.log("Welcome!");
     res.status(200).json({ message: 'This is the response' });
   } catch (err) {
-    console.log(err);
+    next(err);
 }
 }
 );
@@ -255,10 +239,9 @@ const enrichRequestWithPrivateThings = async (req, res, next) => {
   try {
     const user = await User.findById(_id);
     req.privateThings = user.privateThings;
-    console.log("private page", req.payload);
     next();
   } catch (err) {
-    console.log(err);
+    next(err);
   }
 };
 
