@@ -14,6 +14,9 @@ const Record = require("../models/Record.model");
 const { isAuthenticated } = require("../middlewares/jwt.auth");
 const uploader = require("../middlewares/cloudinary.config.js");
 
+const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
+
+
 // Error handler middleware
 const errorHandler = (err, req, res, next) => {
   console.error(err);
@@ -158,18 +161,13 @@ router.post("/addRecord", isAuthenticated, uploader.single("recordPath"), async 
 );
 
 router.get("/write", isAuthenticated, async (req, res, next) => {
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-   const configuration = new Configuration({
-    apiKey: process.env.OPENAI_API_KEY,
-  });
-  const openai = new OpenAIApi(configuration);
-  
-  // get the last record transcript 
-  const user = await User.findById(req.payload._id);
-  const lastRecordId = user.record[user.record.length - 1]._id;
-  const prompt = await Record.findById(lastRecordId);
-
   try {
+    // Get the last record transcript 
+    const user = await User.findById(req.payload._id);
+    const lastRecordId = user.record[user.record.length - 1]._id;
+    const prompt = await Record.findById(lastRecordId);
+
+    // Generate OpenAI chat completion
     const completion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
       messages: [
@@ -185,16 +183,12 @@ router.get("/write", isAuthenticated, async (req, res, next) => {
     });
   
     const text = completion.data.choices[0].message.content;
-    res.json( {text} );
         
-    //start
-    const writtenText = new Text({writtenText: text});
-    await writtenText.save();
+    // Create and save writtenText before sending the response
+    const writtenText = await Text.create({ writtenText: text });
+    await User.findByIdAndUpdate(req.payload._id, { $push: { writtenText: writtenText._id } }, { new: true });
 
-    const writtenTextId = writtenText._id;
-    // Associate the record with the user
-     await User.findByIdAndUpdate(req.payload._id, { $push: { writtenText: writtenTextId } }, { new: true });
-    // end
+    res.json({ text });
   } catch(err) {
     next(err);
   }
@@ -212,7 +206,6 @@ const storage = multer.diskStorage({
   },
 });
 const upload = multer({ storage: storage });
-
 
 // this route saves a file recorded by user to the project repo
 router.post("/record", isAuthenticated, upload.single('audio'), async (req, res, next) => {
@@ -268,8 +261,6 @@ module.exports = router;
     fs.unlinkSync(localFilePath);
     res.status(201).json(record);
   } catch (err) {
-    console.error(err);
-    // Handle the error appropriately
     res.status(500).json({ error: 'An error occurred' });
   }
 }) */
