@@ -12,6 +12,7 @@ const uploader = require("../middlewares/cloudinary.config.js");
 const { Configuration, OpenAIApi, TranscriptionsApi } = require("openai");
 const FormData = require("form-data");
 const path = require("path");
+const multer = require('multer');
 
 router.post("/signup", async (req, res) => {
   const saltRounds = 13;
@@ -95,7 +96,7 @@ router.post("/addRecord",isAuthenticated,uploader.single("recordPath"),async (re
     // Method 2: upload a file from user's drive > upload it to cloudinary > then save it to local file in project > send it to be transcribed
     try {
       // Take record from the form and upload it to mongoose
-      const record = new Record({title: req.body.title,recordPath: req.file.path});
+      const record = new Record({title: req.body.title, recordPath: req.file.path});
       await record.save();
 
       const recordId = record._id;
@@ -177,10 +178,10 @@ router.get("/write", isAuthenticated, async (req, res, next) => {
     const completion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
       messages: [
-        // {
-        //   role: "system",
-        //   content: "You are a helpful assistant who can write good text based on the prompt.",
-        // },
+        {
+          role: "system",
+          content: "You are a helpful assistant who can write good text based on the prompt.",
+        },
         {
           role: "user",
           content: `Hi, can you please write a short feedback text with this context: ${prompt}`,
@@ -210,6 +211,26 @@ router.get("/write", isAuthenticated, async (req, res, next) => {
   }
   
  }
+);
+
+
+// Multer configuration
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, './'); // Specify the directory where you want to save the files
+  },
+  filename: function (req, file, cb) {
+    cb(null, file.originalname); // Use the original filename for saving the file
+  },
+});
+const upload = multer({ storage: storage });
+
+
+
+router.post("/record", isAuthenticated, upload.single('audio'), async (req, res, next) => {
+  console.log("Welcome!");
+  res.status(200).json({ message: 'File uploaded successfully' });
+}
 );
 
 const enrichRequestWithPrivateThings = async (req, res, next) => {
