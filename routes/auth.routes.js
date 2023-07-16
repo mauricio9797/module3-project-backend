@@ -60,7 +60,6 @@ router.get("/verify", isAuthenticated, (req, res) => {
   }
 });
 
-//isAuthenticated
 router.get("/transcribe", isAuthenticated, uploader.single("recordPath"), async (req, res, next) => {
     try {
       // Method 1: transcribing a local file, saved in the project directory and then sending it to transcription
@@ -92,7 +91,7 @@ router.get("/transcribe", isAuthenticated, uploader.single("recordPath"), async 
   }
 );
 
-router.post("/addRecord",isAuthenticated,uploader.single("recordPath"),async (req, res, next) => {
+router.post("/addRecord", isAuthenticated, uploader.single("recordPath"), async (req, res, next) => {
     // Method 2: upload a file from user's drive > upload it to cloudinary > then save it to local file in project > send it to be transcribed
     try {
       // Take record from the form and upload it to mongoose
