@@ -16,7 +16,6 @@ const uploader = require("../middlewares/cloudinary.config.js");
 
 const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
 
-
 // Error handler middleware
 const errorHandler = (err, req, res, next) => {
   console.error(err);
@@ -132,7 +131,7 @@ router.post("/addRecord", isAuthenticated, uploader.single("recordPath"), async 
 
       // define function sendToApi which sends the file to be transcribed
       async function sendToApi() {
-        const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+        
         const filePath = path.join(__dirname, "../temporary.mp3");
         const model = "whisper-1";
 
@@ -151,7 +150,7 @@ router.post("/addRecord", isAuthenticated, uploader.single("recordPath"), async 
           .then((response) => {
             const text = response.data.text;
             res.json({ text });
-            return Record.findByIdAndUpdate(searchedRecord, { transcript: text },{ new: true })
+            return Record.findByIdAndUpdate(searchedRecord, { transcript: text }, { new: true })
           });
       }
     } catch(err){
@@ -165,7 +164,8 @@ router.get("/write", isAuthenticated, async (req, res, next) => {
     // Get the last record transcript 
     const user = await User.findById(req.payload._id);
     const lastRecordId = user.record[user.record.length - 1]._id;
-    const prompt = await Record.findById(lastRecordId);
+    const foundRecord = await Record.findById(lastRecordId);
+    const prompt = foundRecord.transcript
 
     // Generate OpenAI chat completion
     const completion = await openai.createChatCompletion({
@@ -207,7 +207,7 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
-// this route saves a file recorded by user to the project repo
+// This route saves a file recorded by user to the project repo
 router.post("/record", isAuthenticated, upload.single('audio'), async (req, res, next) => {
   try {
     res.status(200).json({ message: 'File uploaded successfully' });
@@ -217,10 +217,17 @@ router.post("/record", isAuthenticated, upload.single('audio'), async (req, res,
 }
 );
 
-// this route displays all recordings of a user
+// This route displays all recordings of a user
 router.get("/display", isAuthenticated, async (req, res, next) => {
   try {
-    res.status(200).json({ message: 'This is the response' });
+    // Get the last record transcript 
+    const user = await User.findById(req.payload._id);
+    const lastRecordId = user.record[user.record.length - 1]._id;
+    const foundRecord = await Record.findById(lastRecordId);
+    const transcript = foundRecord.transcript;
+    //console.log(transcript);
+   
+    res.json(transcript);
   } catch (err) {
     next(err);
 }
