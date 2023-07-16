@@ -61,7 +61,7 @@ router.get("/verify", isAuthenticated, (req, res) => {
 });
 
 //isAuthenticated
-router.get("/transcribe", uploader.single("recordPath"), async (req, res, next) => {
+router.get("/transcribe", isAuthenticated, uploader.single("recordPath"), async (req, res, next) => {
     try {
       // Method 1: transcribing a local file, saved in the project directory and then sending it to transcription
       const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
