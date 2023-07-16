@@ -15,15 +15,18 @@ const path = require("path");
 const multer = require('multer');
 
 router.post("/signup", async (req, res) => {
-  const saltRounds = 13;
-  const salt = bcrypt.genSaltSync(saltRounds);
-  const hash = bcrypt.hashSync(req.body.password, salt);
-  const newUser = await User.create({ email: req.body.email, password: hash });
-  console.log("here is our new user in the DB", newUser);
-  res.status(201).json(newUser);
+  try {
+    const saltRounds = 13;
+    const salt = bcrypt.genSaltSync(saltRounds);
+    const hash = bcrypt.hashSync(req.body.password, salt);
+    const newUser = await User.create({ email: req.body.email, password: hash });
+    console.log("here is our new user in the DB", newUser);
+    res.status(201).json(newUser);
+  } catch (err) {
+    console.log(err);
+  }
 });
 
-//login route
 router.post("/login", async (req, res) => {
   try {
     const foundUser = await User.findOne({ email: req.body.email });
@@ -55,8 +58,12 @@ router.post("/login", async (req, res) => {
 
 router.get("/verify", isAuthenticated, (req, res) => {
   const { _id } = req.payload;
-  if (req.payload) {
+  try {
+    if (req.payload) {
     res.status(200).json({ user: req.payload });
+    }
+  } catch (err) {
+    res.status(500).json({ error: "An error occurred" });
   }
 });
 
@@ -192,9 +199,7 @@ router.get("/write", isAuthenticated, async (req, res, next) => {
     console.log(lastRecordId);
     console.log(text);
     res.json( {text} );
-    
-
-    
+        
     //start
     const writtenText = new Text({writtenText: text});
     await writtenText.save();
@@ -212,7 +217,6 @@ router.get("/write", isAuthenticated, async (req, res, next) => {
  }
 );
 
-
 // Multer configuration
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -225,10 +229,24 @@ const storage = multer.diskStorage({
 const upload = multer({ storage: storage });
 
 
-
+// this route saves a file recorded by user to the project repo
 router.post("/record", isAuthenticated, upload.single('audio'), async (req, res, next) => {
-  console.log("Welcome!");
-  res.status(200).json({ message: 'File uploaded successfully' });
+  try {
+    res.status(200).json({ message: 'File uploaded successfully' });
+  } catch (err) {
+    console.log(err);
+  }
+}
+);
+
+// this route displays all recordings of a user
+router.get("/display", isAuthenticated, async (req, res, next) => {
+  try {
+    console.log("Welcome!");
+    res.status(200).json({ message: 'This is the response' });
+  } catch (err) {
+    console.log(err);
+}
 }
 );
 
