@@ -126,20 +126,6 @@ router.get("/editUser/:userId", isAuthenticated, async (req, res, next) => {
       console.log( user );
       res.status(200).json(  user  );
 
-      
-      // axios
-      //   .get(`/editUser/${userId}`, userId, {
-      //       headers: { authorization: `Bearer ${gotToken}` },
-      //   })
-      //   .then((response) => {
-      //     console.log(response.data.text);
-      //     const text = response.data.text;
-      //     res.json({ text });
-      //   });
-  //   } catch (err) {
-  //     console.error("Error", err);
-  //     res.status(500).json({ error: "An error occurred" });
-  //  }
   }
 );
 
