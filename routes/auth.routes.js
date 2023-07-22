@@ -126,29 +126,26 @@ router.get("/editUser/:userId", isAuthenticated, async (req, res, next) => {
       console.log( user );
       res.status(200).json(  user  );
 
-      // res.status(200).json("Testing sending response to fronend");
-
-    //   axios
-    //     .get(`/editUser/${userId}`, userId, {
-    //       //headers: {
-    //         headers: { authorization: `Bearer ${gotToken}` },
-    //      // },
-    //     })
-    //     .then((response) => {
-    //       console.log(response.data.text);
-    //       const text = response.data.text;
-    //       res.json({ text });
-    //     });
-    // } catch (err) {
-    //   console.error("Error", err);
-    //   res.status(500).json({ error: "An error occurred" });
-   // }
+      
+      // axios
+      //   .get(`/editUser/${userId}`, userId, {
+      //       headers: { authorization: `Bearer ${gotToken}` },
+      //   })
+      //   .then((response) => {
+      //     console.log(response.data.text);
+      //     const text = response.data.text;
+      //     res.json({ text });
+      //   });
+  //   } catch (err) {
+  //     console.error("Error", err);
+  //     res.status(500).json({ error: "An error occurred" });
+  //  }
   }
 );
 
 router.put("/editUser/:userId", isAuthenticated, imageUploader.single("userImage"),  async (req, res, next) => {
   try {
-    const {userId} = req.params
+    const { userId } = req.params;
     console.log(userId, "id from editUser POST ")
     const userToEdit = await User.findByIdAndUpdate(
       userId,
