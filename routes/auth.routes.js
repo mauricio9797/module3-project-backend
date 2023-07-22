@@ -68,8 +68,7 @@ router.get("/verify", isAuthenticated, async (req, res) => {
 });
 
 //isAuthenticated
-router.get(
-  "/transcribe",
+router.get("/transcribe",
   uploader.single("recordPath"),
   async (req, res, next) => {
     try {
@@ -114,32 +113,40 @@ router.post("/profile", isAuthenticated, async (req, res, next) => {
   }
 });
 
-router.get(
-  "/editUser/:userId",
-  isAuthenticated,
-  async (req, res, next) => {
-    try {
-      // get id from user
-     const {userId} = req.payload._id
 
-      axios
-        .get(`editUser/${userId}`, userId, {
-          //headers: {
-            headers: { authorization: `Bearer ${gotToken}` },
-         // },
-        })
-        .then((response) => {
-          console.log(response.data.text);
-          const text = response.data.text;
-          res.json({ text });
-        });
-    } catch (err) {
-      console.error("error with openai axios call", err);
-      res.status(500).json({ error: "An error occurred" });
-    }
+router.get("/editUser/:userId", isAuthenticated, async (req, res, next) => {
+  console.log("Hello!");
+    // try {
+      console.log("Hi!");
+      const { userId } = req.params;
+      console.log("userId from backend: ", userId);
+
+      const user = await User.findById(userId);
+      
+      console.log( user );
+      res.status(200).json(  user  );
+
+      // res.status(200).json("Testing sending response to fronend");
+
+    //   axios
+    //     .get(`/editUser/${userId}`, userId, {
+    //       //headers: {
+    //         headers: { authorization: `Bearer ${gotToken}` },
+    //      // },
+    //     })
+    //     .then((response) => {
+    //       console.log(response.data.text);
+    //       const text = response.data.text;
+    //       res.json({ text });
+    //     });
+    // } catch (err) {
+    //   console.error("Error", err);
+    //   res.status(500).json({ error: "An error occurred" });
+   // }
   }
 );
-router.post("/editUser/:userId", isAuthenticated, imageUploader.single("userImage"),  async (req, res, next) => {
+
+router.put("/editUser/:userId", isAuthenticated, imageUploader.single("userImage"),  async (req, res, next) => {
   try {
     const {userId} = req.params
     console.log(userId, "id from editUser POST ")
