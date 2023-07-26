@@ -420,26 +420,25 @@ async function sendToApi(recordId) {
 router.get("/display", isAuthenticated, async (req, res, next) => {
   try {  
     const user = await User.findById(req.payload._id).populate("record");
-    const transcripts = user.record.map(record => record.transcript);
-    res.json(transcripts);
+    const record = user.record.map(record => record);
+    res.json(record);
   } catch (err) {
     next(err);
   }
 });
 
-
 router.post("/display", isAuthenticated, async (req, res, next) => {
   try {
-    const { transcriptId } = req.body;
+    const { recordId } = req.body;
     const user = await User.findById(req.payload._id).populate("record");
-    const recordIndex = user.record.findIndex(record => record.transcript == transcriptId);
+    const recordIndex = user.record.findIndex(record => record._id.toString() === recordId);
     if (recordIndex === -1) {
       return res.status(404).json({ message: "Transcript not found." });
     }
     user.record.splice(recordIndex, 1);
     await user.save();
 
-    res.json({ message: "Transcript deleted successfully.", deletedTranscript: transcriptId });
+    res.json({ message: "Transcript deleted successfully.", deletedRecord: recordId });
   } catch (err) {
     next(err);
   }
