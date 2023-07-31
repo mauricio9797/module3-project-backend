@@ -18,10 +18,10 @@ const recordSchema = new Schema(
     //   type: String
     // },
     writtenText: [{
-      _id: {
-        type: Schema.Types.ObjectId, 
-        required: true,
-      },
+      // _id: {
+      //   type: Schema.Types.ObjectId, 
+      //   required: true,
+      // },
       text: {
         type: String,
         required: true,

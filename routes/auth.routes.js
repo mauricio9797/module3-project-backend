@@ -24,6 +24,8 @@ const openai = new OpenAIApi(
   new Configuration({ apiKey: process.env.OPENAI_API_KEY })
 );
 
+
+// Authentication routes
 router.post("/signup", cloudinaryImageUploader.single("userImage"), async (req, res) => {
     const saltRounds = 13;
     const salt = bcrypt.genSaltSync(saltRounds);
@@ -54,38 +56,47 @@ router.post("/login", async (req, res) => {
           algorithm: "HS256",
           expiresIn: "6h",
         });
-        // console.log("here is my new token", authToken);
         res.status(200).json({ authToken });
       }
     } else {
       res.status(400).json({ message: "email or password do not match" });
     }
   } catch (err) {
-    console.log(err);
+    res.status(500).json({ message: "Something went wrong on the server." });
   }
 });
 
 router.get("/verify", isAuthenticated, async (req, res) => {
   try {
     const user = await User.findById(req.payload._id);
-    res.status(200).json({ user: user.toObject(), userImage: user.userImage });
+
+    if (user !== null) {
+      // User found, respond with the user data
+      res.status(200).json({ user: user.toObject(), userImage: user.userImage });
+    } else {
+      // User not found, handle this situation accordingly
+      res.status(404).json({ error: "User not found" });
+    }
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "An error occurred" });
   }
 });
 
-router.post("/profile", isAuthenticated, async (req, res, next) => {
+// User operations 
+router.get("/profile", isAuthenticated, async (req, res, next) => {
   try {
-    const user = await User.findByIdAndDelete(req.payload._id);
-    user.delete();
-    res.status(201).json(user);
-    res.status(200).json({ message: "User account deleted successfully" });
+    const user = await User.findById(req.payload._id);
+    res.json(user);
   } catch (err) {
-    console.log("Error deleting user account", err);
-    res.status(500).json({ error: "Something went wrong" });
+    next(err);
   }
 });
+
+router.get("/private-page", isAuthenticated, async (req, res) => {
+  res.status(200).json({ privateThings: req.privateThings });
+});
+
 
 router.get("/editUser/:userId", isAuthenticated, async (req, res, next) => {
   const { userId } = req.params;
@@ -95,15 +106,11 @@ router.get("/editUser/:userId", isAuthenticated, async (req, res, next) => {
 
 router.put("/editUser/:userId", isAuthenticated, cloudinaryImageUploader.single("userImage"), async (req, res, next) => {
     try {
-      const saltRounds = 13;
-      const salt = bcrypt.genSaltSync(saltRounds);
-      const hash = bcrypt.hashSync(req.body.password, salt);
       const { userId } = req.params;
       const userToEdit = await User.findByIdAndUpdate(userId, 
         {
         email: req.body.email,
         ...(req.file ? { userImage: req.file.path } : {}),
-        password: hash,
       });
       res.status(200).json(userToEdit);
     } catch (err) {
@@ -113,8 +120,7 @@ router.put("/editUser/:userId", isAuthenticated, cloudinaryImageUploader.single(
   }
 );
 
-
-router.post("/deleteUser/:userId", isAuthenticated, async (req, res, next) => {
+router.delete("/deleteUser/:userId", isAuthenticated, async (req, res, next) => {
   try {
     const { userId } = req.params;
     const userToDelete = await User.findByIdAndDelete(userId);
@@ -125,6 +131,7 @@ router.post("/deleteUser/:userId", isAuthenticated, async (req, res, next) => {
   }
 });
 
+// Record creation operations  
 router.post("/addRecord", isAuthenticated, cloudinaryAudioUploader.single("recordPath"), async (req, res, next) => {
     // Upload a file from user's drive > upload it to cloudinary > then save it to local file in project > send it to be transcribed
     try {
@@ -136,6 +143,7 @@ router.post("/addRecord", isAuthenticated, cloudinaryAudioUploader.single("recor
       await record.save();
 
       const recordId = record._id;
+
       // Associate the record with the user
       await User.findByIdAndUpdate(
         req.payload._id,
@@ -193,7 +201,7 @@ router.post("/addRecord", isAuthenticated, cloudinaryAudioUploader.single("recor
           .then((response) => {
             // then send the transcription as response and save to DB 
             const text = response.data.text;
-            res.json({ text });
+            res.json({ recordId, text });
             return Record.findByIdAndUpdate(
               searchedRecord,
               { transcript: text },
@@ -208,70 +216,59 @@ router.post("/addRecord", isAuthenticated, cloudinaryAudioUploader.single("recor
   }
 );
 
-router.get("/write", isAuthenticated, async (req, res, next) => {
+router.get("/write/:recordId", isAuthenticated, async (req, res, next) => { 
   try {
-    // Get the last record transcript
-    const user = await User.findById(req.payload._id);
-    const lastRecordId = user.record[user.record.length - 1]._id;
-    const foundRecord = await Record.findById(lastRecordId);
+    // Get the record transcript 
+    const { recordId } = req.params;
+    const record = await Record.findById(recordId);
+    const prompt = record.transcript;
 
-    const prompt = await foundRecord.transcript;
+    // Generate OpenAI chat completion
+    const completion = await openai.createChatCompletion({
+      model: "gpt-3.5-turbo",
+      messages: [ { role: "user", content: `Hi, can you please write a short text with this context: ${prompt}.` } ] 
+    });
+    const text = completion.data.choices[0].message.content;
+
+    // Create and save writtenText before sending the response
+    const writtenText = await Text.create({ writtenText: text });
+
+    //  Associate the written text with the record 
+      res.json({ text });
+      await Record.findByIdAndUpdate(recordId, 
+        { writtenText: { _id: writtenText._id, text: text } }, 
+        { new: true }
+    );
+  } catch (err) {
+    res.status(500).json({ error: "An error occurred" });
+  }
+});
+
+router.get("/writeText/:recordId", isAuthenticated, async (req, res, next) => {
+    // Get the record transcript
+    const { recordId } = req.params;
+    const record = await Record.findById(recordId);
+    const prompt = record.transcript;
 
     // Generate OpenAI chat completion
     const completion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
       messages: [
-        {
-          role: "user",
-          content: `Hi, can you please write a short feedback text with this context: ${prompt}`,
-        },
+        { role: "user", content: `Hi, can you please write a short text with this context: ${prompt}.` },
       ],
     });
-
     const text = completion.data.choices[0].message.content;
-
-    // Create and save writtenText before sending the response
-    const writtenText = await Text.create({ writtenText: text });
-    // associate with user 
-    // await User.findByIdAndUpdate(
-    //   req.payload._id,
-    //   { $push: { writtenText: writtenText._id } },
-    //   { new: true }
-    // );
-
-      //  associate with record 
-      res.json({ text });
-      await Record.findByIdAndUpdate(
-          lastRecordId,
-      {
-        writtenText: {
-          _id: writtenText._id,
-          text: text,
-        },
-      },
-      { new: true }
-    );
-
-  } catch (err) {
-    console.error("Error with OpenAI Chat Completion", err);
-    res.status(500).json({ error: "An error occurred" });
-  }
+    // Push the new written text to the array
+    record.writtenText.push({ text: text });
+    await record.save();
+    res.json({ text });
 });
 
-router.get("/transcription", isAuthenticated, async (req, res, next) => {
-  try {
-    const user = await User.findById(req.payload._id);
-    if (user.record.length > 0) {
-      const lastRecordId = user.record[0]._id;}
-    if (user.record.length > 0) {
-      const lastRecordId = user.record[user.record.length - 1]._id;
-      const foundRecord = await Record.findById(lastRecordId);
-      const transcript = await foundRecord.transcript;
-      res.send({ transcript });
-  }
-  } catch (err) {
-    next(err);
-  }
+router.get("/transcribe/:recordId", isAuthenticated, async (req, res, next) => {
+    const { recordId } = req.params;
+    const record = await Record.findById(recordId);
+    const transcript = record.transcript ;
+    res.send({ transcript });
 })
 
 // Record route: this route saves a file recorded by user to the project repo
@@ -308,8 +305,8 @@ router.post("/record", isAuthenticated, multerAudioUploader.single("audio"), asy
             { new: true }
           ).then(() => {
             return sendToApi(savedRecord._id)
-            .then((text) => {
-              res.json({ text }); 
+            .then((record) => {
+              res.json({ record }); 
             })     
           });
         })
@@ -343,18 +340,15 @@ async function sendToApi(recordId) {
     );
     
     const text = response.data.text;
-    // Update the record with the transcript
-    await Record.findByIdAndUpdate(
-      recordId,
-      { transcript: text },
-      { new: true }
-    );
-    return text;
+    // Update the record with the transcript and get full record as response 
+    const record = await Record.findByIdAndUpdate(recordId, { transcript: text }, { new: true });
+    return record
   } catch (error) {
     console.error("Error transcribing audio:", error);
   }
 }
 
+// All records displaying (reading) operations  
 router.get("/display", isAuthenticated, async (req, res, next) => {
   try {  
     const user = await User.findById(req.payload._id).populate("record");
@@ -365,108 +359,32 @@ router.get("/display", isAuthenticated, async (req, res, next) => {
   }
 });
 
-router.post("/display", isAuthenticated, async (req, res, next) => {
-  try {
-    const { recordId } = req.body;
-    const user = await User.findById(req.payload._id).populate("record");
-    const recordIndex = user.record.findIndex(record => record._id.toString() === recordId);
-    if (recordIndex === -1) {
-      return res.status(404).json({ message: "Transcript not found." });
-    }
-    user.record.splice(recordIndex, 1);
-    await user.save();
+router.get("/editRecord/:recordId", isAuthenticated, async (req, res, next) => {
+  const { recordId } = req.params;
+  const record = await Record.findById(recordId);
+  res.status(200).json(record);
+});
 
+// Record editing and deleting operations  
+router.put("/editRecord/:recordId", isAuthenticated, async (req,res) => {
+  const { recordId } = req.params;
+  const { transcript, texts } = req.body;
+  const record = await Record.findById(recordId);
+  if (!record) {return res.status(404).json({ message: 'Record not found' });}
+  if (transcript) record.transcript = transcript;
+  if (texts) {record.writtenText = texts;}
+  const updatedRecord = await record.save();
+  return res.json(updatedRecord);
+});
+
+router.delete("/delete/:recordId", isAuthenticated, async (req, res, next) => {
+  try {
+    const { recordId } = req.params;
+    const recordToDelete = await Record.findByIdAndDelete(recordId);
     res.json({ message: "Transcript deleted successfully.", deletedRecord: recordId });
   } catch (err) {
     next(err);
   }
 });
 
-router.post("/deletetext", isAuthenticated, async (req, res, next) => {
-  try {
-    const { writtenTextId } = req.body;
-    const user = await User.findById(req.payload._id).populate("record");
-    const writtenTextIndex = user.record.findIndex(record => record.writtenText == writtenTextId);
-    if (writtenTextIndex === -1) {
-      return res.status(404).json({ message: "writtenText not found." });
-    }
-    user.record.splice(writtenTextIndex, 1);
-    await user.save();
-    res.json({ message: "writtenText deleted successfully.", deletedTranscript: writtenTextId });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get("/profile", isAuthenticated, async (req, res, next) => {
-  try {
-    const user = await User.findById(req.payload._id);
-    res.json(user);
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get("/private-page", isAuthenticated, async (req, res) => {
-  res.status(200).json({ privateThings: req.privateThings });
-});
-
 module.exports = router;
-
-// TO DELETE: 
-
-// router.get("/transcribe", isAuthenticated, cloudinaryAudioUploader.single("recordPath"), async (req, res, next) => {
-//     try {
-//       // TO TO / TO DELETE: transcribing a local file, saved in the project directory and then sending it to transcription
-
-//       // This is defining the path of the local file:
-
-//       const filePath = path.join(__dirname, "../audio copy.mp3");
-//       const model = "whisper-1";
-//       const formData = new FormData();
-//       formData.append("model", model);
-//       formData.append("file", fs.createReadStream(filePath));
-
-//       const response = axios
-//         .post("https://api.openai.com/v1/audio/transcriptions", formData, {
-//           headers: {
-//             ...formData.getHeaders(),
-//             authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-//             "Content-Type": `multipart/form-data; boundary=${formData._boundary}`,
-//           },
-//         })
-//         .then((response) => {
-//           console.log(response.data.text);
-//           const text = response.data.text;
-//           res.json({ text });
-//         });
-//     } catch (err) {
-//       console.error("error with openai axios call", err);
-//       res.status(500).json({ error: "An error occurred" });
-//     }
-//   }
-// );
-
-
-// // TO DO / TO DELETE
-// router.get("/transcribe", isAuthenticated, async (req, res, next) => {
-//   console.log("Hello from TRANSCRIBE");
-// });
-
-// // TO DO / TO DELETE
-// router.get("/addRecord", isAuthenticated, async (req, res, next) => {
-//   console.log("Hello from ADDRECORD");
-// });
-
-// // DELETE USER .GET AND .POST ROUTES
-// router.get("/deleteUser/:userId", isAuthenticated, async (req, res, next) => {
-//   try {
-//     const { userId } = req.params;
-//     console.log(userId, "id from deleteUser ROUTE");
-//     const user = await User.findById(userId);
-//     res.status(200).json(user);
-//   } catch (err) {
-//     console.log("Error editing user account", err);
-//     res.status(500).json({ error: "Something went wrong" });
-//   }
-// };
